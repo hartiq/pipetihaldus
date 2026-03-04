@@ -27,7 +27,6 @@ if not check_password():
     st.stop()  # Peatame rakenduse laadimise siinkohal
 # --- TURVALISUSE LÕPP ---
 
-# Siit edasi läheb sinu tavaline rakenduse kood...
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -64,21 +63,6 @@ def add_entry(klient, kogus, saabumine, kontakt, email, tel):
     conn.commit()
     conn.close()
 
-def update_full_entry(row_id, klient, kogus, kontakt, email, tel):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("""UPDATE pipetid SET klient=?, kogus=?, kontaktisik=?, email=?, telefon=? 
-                 WHERE id=?""", (klient, kogus, kontakt, email, tel, row_id))
-    conn.commit()
-    conn.close()
-
-def delete_entry(row_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM pipetid WHERE id = ?", (row_id,))
-    conn.commit()
-    conn.close()
-
 def update_field(row_id, column, value):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -105,25 +89,22 @@ with st.sidebar:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    valikud = ["+ Lisa uus..."] + olemasolevad_nimed
-    
-    # Kasutame key-d, et Streamlit hoiaks olekut
-    valitud_klient = st.selectbox("Vali klient või otsi", valikud, key="client_select")
+    # --- UUS LAHENDUS: Märkeruut uue kliendi jaoks ---
+    on_uus_klient = st.checkbox("➕ Lisa täiesti uus klient", key="uus_klient_check")
     
     sisestatud_nimi = ""
     default_kontakt, default_email, default_tel = "", "", ""
 
-    if valitud_klient == "+ Lisa uus...":
-        # NB! Me ei muuda seda väljaspool, vaid laseme vormil endal puhastuda
-        sisestatud_nimi = st.text_input("Uue kliendi nimi", key="new_client_name_input")
+    if on_uus_klient:
+        sisestatud_nimi = st.text_input("Uue kliendi nimi", key="input_uus_nimi")
     else:
-        sisestatud_nimi = valitud_klient
-        if valitud_klient in kliendid_info.index:
+        valitud_klient = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed, key="valik_olemasolev")
+        if valitud_klient != "":
+            sisestatud_nimi = valitud_klient
             default_kontakt = str(kliendid_info.loc[valitud_klient, 'kontaktisik'] or "")
             default_email = str(kliendid_info.loc[valitud_klient, 'email'] or "")
             default_tel = str(kliendid_info.loc[valitud_klient, 'telefon'] or "")
 
-    # Vormi seadistus
     with st.form("lisa_vorm", clear_on_submit=True):
         f_kogus = st.number_input("Kogus", min_value=1, step=1)
         f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
@@ -133,15 +114,10 @@ with st.sidebar:
         f_email = st.text_input("Email", value=default_email)
         f_tel = st.text_input("Telefon", value=default_tel)
         
-        # Salvestamise nupp
-        submitted = st.form_submit_button("Salvesta")
-        
-        if submitted:
-            if sisestatud_nimi and sisestatud_nimi != "":
+        if st.form_submit_button("Salvesta andmebaasi"):
+            if sisestatud_nimi:
                 add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
                 st.success(f"Salvestatud: {sisestatud_nimi}")
-                # Selle asemel et session_state'i torkida, teeme lihtsalt rerun'i
-                # clear_on_submit=True puhastab vormisisesed väljad automaatselt
                 st.rerun()
             else:
                 st.error("Kliendi nimi on puudu!")
@@ -152,7 +128,7 @@ tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu"])
 def draw_rows(df_subset):
     for index, row in df_subset.iterrows():
         with st.container():
-            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.6, 0.5, 1, 1, 1, 1, 1, 0.6])
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.6, 0.5, 1, 1, 1, 1, 1, 0.4])
             with c1:
                 st.write(f"**{row['klient']}**")
                 st.caption(f"👤 {row['kontaktisik'] or '-'} | 📧 {row['email'] or '-'} | 📞 {row['telefon'] or '-'}")
@@ -161,7 +137,7 @@ def draw_rows(df_subset):
             
             btns = [('saadetud_kalibr', c3, "Saadetud"), ('kaes_kalibr', c4, "Tallinnas"), 
                     ('saabunud_kalibr', c5, "Kalibreeritud"), ('teavitus', c6, "Teavitatud"), 
-                    ('valjastatud', c7, "Väljastatud/saadetud")]
+                    ('valjastatud', c7, "Väljasta")]
 
             for field, col, label in btns:
                 with col:
@@ -173,24 +149,13 @@ def draw_rows(df_subset):
                         st.caption(f"✅ {row[field]}")
 
             with c8:
-                edit_col, del_col = st.columns(2)
-                if edit_col.button("📝", key=f"ed_{row['id']}"):
-                    st.session_state[f"edit_mode_{row['id']}"] = True
-                if del_col.button("🗑️", key=f"del_{row['id']}"):
-                    delete_entry(row['id'])
+                if st.button("🗑️", key=f"del_{row['id']}"):
+                    conn = sqlite3.connect(DB_FILE)
+                    c = conn.cursor()
+                    c.execute("DELETE FROM pipetid WHERE id = ?", (row['id'],))
+                    conn.commit()
+                    conn.close()
                     st.rerun()
-
-            if st.session_state.get(f"edit_mode_{row['id']}", False):
-                with st.form(f"edit_form_{row['id']}"):
-                    e_klient = st.text_input("Klient", value=row['klient'])
-                    e_kogus = st.number_input("Kogus", value=row['kogus'])
-                    e_kontakt = st.text_input("Kontaktisik", value=row['kontaktisik'])
-                    e_email = st.text_input("Email", value=row['email'])
-                    e_tel = st.text_input("Telefon", value=row['telefon'])
-                    if st.form_submit_button("Uuenda"):
-                        update_full_entry(row['id'], e_klient, e_kogus, e_kontakt, e_email, e_tel)
-                        st.session_state[f"edit_mode_{row['id']}"] = False
-                        st.rerun()
             st.divider()
 
 with tab1:
@@ -208,4 +173,3 @@ if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
     st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
-

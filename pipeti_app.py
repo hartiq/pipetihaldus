@@ -1,4 +1,33 @@
 import streamlit as st
+
+# --- TURVALISUSE KONTROLL ---
+def check_password():
+    """Tagastab True, kui kasutaja on sisestanud õige parooli."""
+    def password_entered():
+        if st.session_state["password"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Eemaldame parooli sessioonist
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Näitame sisselogimise akent
+        st.text_input("Parool", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Vale parooli korral näitame uuesti sisestust ja viga
+        st.text_input("Parool", type="password", on_change=password_entered, key="password")
+        st.error("❌ Vale parool")
+        return False
+    else:
+        # Parool on õige
+        return True
+
+if not check_password():
+    st.stop()  # Peatame rakenduse laadimise siinkohal
+# --- TURVALISUSE LÕPP ---
+
+# Siit edasi läheb sinu tavaline rakenduse kood...
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -115,7 +144,7 @@ def draw_rows(df_subset):
             now_str = datetime.now().strftime("%d.%m.%Y")
             btns = [('saadetud_kalibr', c3, "Saadetud"), ('kaes_kalibr', c4, "Tallinnas"), 
                     ('saabunud_kalibr', c5, "Kalibr."), ('teavitus', c6, "Teavitatud"), 
-                    ('valjastatud', c7, "Väljastatud")]
+                    ('valjastatud', c7, "Väljastatud / saadetud")]
 
             for field, col, label in btns:
                 with col:
@@ -164,3 +193,4 @@ if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
     st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
+

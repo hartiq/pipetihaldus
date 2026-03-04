@@ -65,10 +65,11 @@ st.title("🧪 Pipettide kalibreerimise süsteem")
 
 data = load_data()
 
-# 3. KÜLGMENÜÜ: LISAMINE
+# 3. KÜLGMENÜÜ: LISAMINE (Parandatud loogika)
 with st.sidebar:
     st.header("Lisa uus töö")
     
+    # Kogume vana info
     if not data.empty:
         kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
         olemasolevad_nimed = sorted(data['klient'].unique().tolist())
@@ -76,9 +77,20 @@ with st.sidebar:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    valitud_klient = st.selectbox("Vali klient või trüki uus", [""] + olemasolevad_nimed + ["+ Lisa uus..."])
-    sisestatud_nimi = st.text_input("Kliendi nimi") if valitud_klient == "+ Lisa uus..." else valitud_klient
+    # LIHTNE TEKSTIVÄLI - kirjuta siia nime algus
+    sisestatud_nimi = st.text_input("Kliendi nimi", placeholder="Trüki nimi...")
 
+    # Kui midagi on trükitud, pakume sarnaseid variante
+    if sisestatud_nimi:
+        soovitused = [n for n in olemasolevad_nimed if sisestatud_nimi.lower() in n.lower()]
+        if soovitused and sisestatud_nimi not in soovitused:
+            st.caption("Kas mõtlesid mõnda neist?")
+            for s in soovitused[:3]: # Näitame max 3 soovitust
+                if st.button(s, key=f"suggest_{s}"):
+                    st.session_state.nimi_input = s # See nõuaks keerukamat state-i, jätame praegu nupuna
+                    st.info(f"Valisid: {s}. Kirjuta see lahtrisse täpselt.")
+
+    # Automaatne andmete täitmine
     default_kontakt, default_email, default_tel = "", "", ""
     if sisestatud_nimi in kliendid_info.index:
         default_kontakt = str(kliendid_info.loc[sisestatud_nimi, 'kontaktisik'] or "")
@@ -96,12 +108,13 @@ with st.sidebar:
             if sisestatud_nimi:
                 add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
                 st.rerun()
+            else:
+                st.error("Kliendi nimi on kohustuslik!")
 
-# 4. VAHELEHED: AKTIIVSED VS AJALUGU
+# 4. VAHELEHED
 tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu (Lõpetatud)"])
 
-def draw_table(df_subset, is_history=False):
-
+def draw_rows(df_subset):
     for index, row in df_subset.iterrows():
         with st.container():
             c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.6, 0.5, 1, 1, 1, 1, 1, 0.6])
@@ -113,7 +126,6 @@ def draw_table(df_subset, is_history=False):
             c2.write(f"{row['kogus']} tk")
             now_str = datetime.now().strftime("%d.%m.%Y")
             
-            # Status nupud
             btns = [('saadetud_kalibr', c3, "Saadetud"), ('kaes_kalibr', c4, "Tallinnas"), 
                     ('saabunud_kalibr', c5, "Kalibreeritud"), ('teavitus', c6, "Teavitatud"), 
                     ('valjastatud', c7, "Väljastatud/saadetud")]
@@ -128,7 +140,6 @@ def draw_table(df_subset, is_history=False):
                         st.caption(f"✅ {row[field]}")
 
             with c8:
-                # Muuda ja Kustuta
                 edit_col, del_col = st.columns(2)
                 if edit_col.button("📝", key=f"ed_{row['id']}"):
                     st.session_state[f"edit_mode_{row['id']}"] = True
@@ -136,7 +147,6 @@ def draw_table(df_subset, is_history=False):
                     delete_entry(row['id'])
                     st.rerun()
 
-            # Muutmise vorm (avaneb rea alla)
             if st.session_state.get(f"edit_mode_{row['id']}", False):
                 with st.form(f"edit_form_{row['id']}"):
                     e_klient = st.text_input("Klient", value=row['klient'])
@@ -152,18 +162,16 @@ def draw_table(df_subset, is_history=False):
 
 with tab1:
     aktiivsed = data[data['valjastatud'] == ""]
-    if aktiivsed.empty: st.write("Aktiivseid töid pole.")
-    else: draw_table(aktiivsed)
+    if aktiivsed.empty: st.info("Aktiivseid töid hetkel pole.")
+    else: draw_rows(aktiivsed)
 
 with tab2:
     ajalugu = data[data['valjastatud'] != ""]
-    if ajalugu.empty: st.write("Ajalugu on tühi.")
-    else: draw_table(ajalugu, is_history=True)
+    if ajalugu.empty: st.info("Ajalugu on tühi.")
+    else: draw_rows(ajalugu)
 
 # 5. EKSPORT
 if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
-    st.sidebar.download_button("Laadi kogu andmebaas (CSV)", csv, "pipetid_andmed.csv", "text/csv")
-
-
+    st.sidebar.download_button("Laadi andmebaas alla (CSV)", csv, "pipetid_export.csv", "text/csv")

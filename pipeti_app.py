@@ -104,6 +104,12 @@ with st.sidebar:
         if st.form_submit_button("Salvesta"):
             if sisestatud_nimi and sisestatud_nimi != "":
                 add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
+                
+                # TÜHJENDAMISE LOOGIKA:
+                if "new_client_name" in st.session_state:
+                    st.session_state.new_client_name = "" # Tühjendab tekstivälja
+                
+                st.success(f"Salvestatud: {sisestatud_nimi}")
                 st.rerun()
             else:
                 st.error("Kliendi nimi on puudu!")
@@ -170,3 +176,4 @@ if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
     st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
+

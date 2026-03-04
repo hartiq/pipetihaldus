@@ -1,33 +1,4 @@
 import streamlit as st
-
-# --- TURVALISUSE KONTROLL ---
-def check_password():
-    """Tagastab True, kui kasutaja on sisestanud õige parooli."""
-    def password_entered():
-        if st.session_state["password"] == st.secrets["password"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Eemaldame parooli sessioonist
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        # Näitame sisselogimise akent
-        st.text_input("Parool", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        # Vale parooli korral näitame uuesti sisestust ja viga
-        st.text_input("Parool", type="password", on_change=password_entered, key="password")
-        st.error("❌ Vale parool")
-        return False
-    else:
-        # Parool on õige
-        return True
-
-if not check_password():
-    st.stop()  # Peatame rakenduse laadimise siinkohal
-# --- TURVALISUSE LÕPP ---
-
-
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -83,70 +54,60 @@ def update_field(row_id, column, value):
 st.set_page_config(page_title="Pipettide seire PRO", layout="wide")
 init_db()
 
-# --- CALLBACK SALVESTAMISEKS ---
-def submit_callback():
-    # Kui on uus klient, võtame nime tekstikastist, muidu selectboxist
-    if st.session_state.uus_klient_check:
-        nimi = st.session_state.get('input_uus_nimi', '')
-    else:
-        nimi = st.session_state.get('valik_olemasolev', '')
-
-    if nimi and nimi != "":
-        add_entry(
-            nimi, 
-            st.session_state.f_kogus, 
-            st.session_state.f_saabumine.strftime("%d.%m.%Y"), 
-            st.session_state.f_kontakt, 
-            st.session_state.f_email, 
-            st.session_state.f_tel
-        )
-        # Puhastame väljad
-        st.session_state.uus_klient_check = False
-        if "input_uus_nimi" in st.session_state:
-            st.session_state.input_uus_nimi = ""
-        st.toast(f"Salvestatud: {nimi}")
-    else:
-        st.error("Kliendi nimi on puudu!")
-
-st.title("🧪 Pipettide kalibreerimise süsteem")
 data = load_data()
+
+# --- FUNKTSIOONID ANDMETE UUENDAMISEKS ---
+def update_contact_info():
+    """Uuendab kontaktandmeid sessioonis, kui klient valitakse."""
+    if not data.empty:
+        kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
+        valitud = st.session_state.valik_olemasolev
+        if valitud and valitud in kliendid_info.index:
+            st.session_state.f_kontakt_val = str(kliendid_info.loc[valitud, 'kontaktisik'] or "")
+            st.session_state.f_email_val = str(kliendid_info.loc[valitud, 'email'] or "")
+            st.session_state.f_tel_val = str(kliendid_info.loc[valitud, 'telefon'] or "")
+        else:
+            st.session_state.f_kontakt_val = ""
+            st.session_state.f_email_val = ""
+            st.session_state.f_tel_val = ""
+
+def submit_callback():
+    """Salvestab andmed ja tühjendab väljad."""
+    nimi = st.session_state.input_uus_nimi if st.session_state.uus_klient_check else st.session_state.valik_olemasolev
+    if nimi:
+        add_entry(nimi, st.session_state.f_kogus, st.session_state.f_saabumine.strftime("%d.%m.%Y"), 
+                  st.session_state.f_kontakt, st.session_state.f_email, st.session_state.f_tel)
+        st.session_state.uus_klient_check = False
+        if "input_uus_nimi" in st.session_state: st.session_state.input_uus_nimi = ""
+        st.session_state.f_kontakt_val = ""
+        st.session_state.f_email_val = ""
+        st.session_state.f_tel_val = ""
+        st.toast(f"Salvestatud: {nimi}")
 
 # 3. KÜLGMENÜÜ: LISAMINE
 with st.sidebar:
     st.header("Lisa uus töö")
     
-    if not data.empty:
-        # Tõmbame viimased andmed automaatseks täitmiseks
-        kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
-        olemasolevad_nimed = sorted(data['klient'].unique().tolist())
-    else:
-        kliendid_info = pd.DataFrame()
-        olemasolevad_nimed = []
+    if "f_kontakt_val" not in st.session_state: st.session_state.f_kontakt_val = ""
+    if "f_email_val" not in st.session_state: st.session_state.f_email_val = ""
+    if "f_tel_val" not in st.session_state: st.session_state.f_tel_val = ""
 
     on_uus = st.checkbox("➕ Lisa täiesti uus klient", key="uus_klient_check")
     
-    d_kontakt, d_email, d_tel = "", "", ""
-
     if on_uus:
         st.text_input("Uue kliendi nimi", key="input_uus_nimi")
     else:
-        valik = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed, key="valik_olemasolev")
-        # AUTOMAATNE TÄITMINE: Kui klient on valitud, võtame tema andmed
-        if valik and valik in kliendid_info.index:
-            d_kontakt = str(kliendid_info.loc[valik, 'kontaktisik'] or "")
-            d_email = str(kliendid_info.loc[valik, 'email'] or "")
-            d_tel = str(kliendid_info.loc[valik, 'telefon'] or "")
+        olemasolevad = sorted(data['klient'].unique().tolist()) if not data.empty else []
+        st.selectbox("Vali olemasolev klient", [""] + olemasolevad, 
+                     key="valik_olemasolev", on_change=update_contact_info)
 
-    # VORM
     with st.form("lisa_vorm", clear_on_submit=True):
         st.number_input("Kogus", min_value=1, step=1, key="f_kogus")
         st.date_input("Saabumise kuupäev", datetime.now(), key="f_saabumine")
         st.subheader("Kontaktandmed")
-        # Kasutame 'value' parameetrit automaatseks täitmiseks
-        st.text_input("Kontaktisik", value=d_kontakt, key="f_kontakt")
-        st.text_input("Email", value=d_email, key="f_email")
-        st.text_input("Telefon", value=d_tel, key="f_tel")
-        
+        st.text_input("Kontaktisik", key="f_kontakt", value=st.session_state.f_kontakt_val)
+        st.text_input("Email", key="f_email", value=st.session_state.f_email_val)
+        st.text_input("Telefon", key="f_tel", value=st.session_state.f_tel_val)
         st.form_submit_button("Salvesta andmebaasi", on_click=submit_callback)
 
 # 4. TABELID
@@ -160,11 +121,12 @@ def draw_rows(df_subset):
                 st.write(f"**{row['klient']}**")
                 st.caption(f"👤 {row['kontaktisik'] or '-'} | 📧 {row['email'] or '-'} | 📞 {row['telefon'] or '-'}")
             c2.write(f"{row['kogus']} tk")
-            now_str = datetime.now().strftime("%d.%m.%Y")
             
+            # Status nupud
+            now_str = datetime.now().strftime("%d.%m.%Y")
             btns = [('saadetud_kalibr', c3, "Saadetud"), ('kaes_kalibr', c4, "Tallinnas"), 
                     ('saabunud_kalibr', c5, "Kalibreeritud"), ('teavitus', c6, "Teavitatud"), 
-                    ('valjastatud', c7, "Väljastatud / Saadetud")]
+                    ('valjastatud', c7, "Väljasta")]
 
             for field, col, label in btns:
                 with col:
@@ -172,15 +134,12 @@ def draw_rows(df_subset):
                         if st.button(label, key=f"{field}_{row['id']}"):
                             update_field(row['id'], field, now_str)
                             st.rerun()
-                    else:
-                        st.caption(f"✅ {row[field]}")
+                    else: st.caption(f"✅ {row[field]}")
 
-            # MUUDA JA KUSTUTA NUPUD
             with c8:
                 edit_col, del_col = st.columns(2)
                 if edit_col.button("📝", key=f"ed_{row['id']}"):
                     st.session_state[f"edit_mode_{row['id']}"] = True
-                
                 if del_col.button("🗑️", key=f"del_{row['id']}"):
                     conn = sqlite3.connect(DB_FILE)
                     c = conn.cursor()
@@ -189,7 +148,6 @@ def draw_rows(df_subset):
                     conn.close()
                     st.rerun()
 
-            # MUUTMISE VORM (avaneb pliiatsile vajutades)
             if st.session_state.get(f"edit_mode_{row['id']}", False):
                 with st.form(f"edit_form_{row['id']}"):
                     e_klient = st.text_input("Klient", value=row['klient'])
@@ -213,10 +171,7 @@ with tab2:
     if ajalugu.empty: st.info("Ajalugu on tühi.")
     else: draw_rows(ajalugu)
 
-# 5. EKSPORT
 if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
     st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
-
-

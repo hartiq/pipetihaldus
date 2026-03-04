@@ -70,24 +70,29 @@ with st.sidebar:
     st.header("Lisa uus töö")
     
     if not data.empty:
-        # Tõmbame unikaalsed kliendid ja nende viimased andmed
         kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
         olemasolevad_nimed = sorted(data['klient'].unique().tolist())
     else:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    # TRIKK: Paneme "+ Lisa uus..." esimeseks, et see oleks alati valikus olemas
+    # Kontrollime, kas peame väljad tühjendama
+    if 'clear_input' not in st.session_state:
+        st.session_state.clear_input = False
+
     valikud = ["+ Lisa uus..."] + olemasolevad_nimed
-    valitud_klient = st.selectbox("Vali klient või otsi", valikud)
     
-    # Kui on valitud uus, siis küsime nime eraldi lahtrisse
+    # Selectboxi ja tekstiindeksi hallatavus
+    valitud_klient = st.selectbox("Vali klient või otsi", valikud, key="client_select")
+    
+    sisestatud_nimi = ""
+    default_kontakt, default_email, default_tel = "", "", ""
+
     if valitud_klient == "+ Lisa uus...":
-        sisestatud_nimi = st.text_input("Uue kliendi nimi", key="uus_nimi_input")
-        default_kontakt, default_email, default_tel = "", "", ""
+        # Kasutame key-d, et saaksime seda hiljem tühjendada
+        sisestatud_nimi = st.text_input("Uue kliendi nimi", key="new_client_name")
     else:
         sisestatud_nimi = valitud_klient
-        # Täidame automaatselt andmed andmebaasist
         default_kontakt = str(kliendid_info.loc[valitud_klient, 'kontaktisik'] or "")
         default_email = str(kliendid_info.loc[valitud_klient, 'email'] or "")
         default_tel = str(kliendid_info.loc[valitud_klient, 'telefon'] or "")
@@ -176,4 +181,3 @@ if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
     st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
-

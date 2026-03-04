@@ -83,35 +83,35 @@ if not data.empty:
             
             with c3:
                 if is_empty(row['saadetud_kalibr']):
-                    if st.button("Saada", key=f"btn1_{row['id']}"):
+                    if st.button("Saadetud", key=f"btn1_{row['id']}"):
                         update_field(row['id'], "saadetud_kalibr", now_str)
                         st.rerun()
                 else: st.caption(f"📤 {row['saadetud_kalibr']}")
 
             with c4:
                 if is_empty(row['kaes_kalibr']):
-                    if st.button("Käes", key=f"btn2_{row['id']}"):
+                    if st.button("Saabus Tallinnasse", key=f"btn2_{row['id']}"):
                         update_field(row['id'], "kaes_kalibr", now_str)
                         st.rerun()
                 else: st.caption(f"🔧 {row['kaes_kalibr']}")
 
             with c5:
                 if is_empty(row['saabunud_kalibr']):
-                    if st.button("Sabus", key=f"btn3_{row['id']}"):
+                    if st.button("Tagasi Tartus", key=f"btn3_{row['id']}"):
                         update_field(row['id'], "saabunud_kalibr", now_str)
                         st.rerun()
                 else: st.caption(f"🏠 {row['saabunud_kalibr']}")
 
             with c6:
                 if is_empty(row['teavitus']):
-                    if st.button("Teavita", key=f"btn4_{row['id']}"):
+                    if st.button("Teavitatud", key=f"btn4_{row['id']}"):
                         update_field(row['id'], "teavitus", now_str)
                         st.rerun()
                 else: st.caption(f"📧 {row['teavitus']}")
 
             with c7:
                 if is_empty(row['valjastatud']):
-                    if st.button("Väljasta", key=f"btn5_{row['id']}"):
+                    if st.button("Väljastatud", key=f"btn5_{row['id']}"):
                         update_field(row['id'], "valjastatud", now_str)
                         st.rerun()
                 else: st.info(f"✅ {row['valjastatud']}")
@@ -125,3 +125,4 @@ if not data.empty:
     st.sidebar.divider()
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.download_button("Laadi andmed Excelisse (CSV)", csv, "pipetid_export.csv", "text/csv")
+

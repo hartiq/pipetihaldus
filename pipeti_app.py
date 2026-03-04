@@ -64,6 +64,14 @@ def add_entry(klient, kogus, saabumine, kontakt, email, tel):
     conn.commit()
     conn.close()
 
+def update_full_entry(row_id, klient, kogus, kontakt, email, tel):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""UPDATE pipetid SET klient=?, kogus=?, kontaktisik=?, email=?, telefon=? 
+                 WHERE id=?""", (klient, kogus, kontakt, email, tel, row_id))
+    conn.commit()
+    conn.close()
+
 def update_field(row_id, column, value):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -75,11 +83,15 @@ def update_field(row_id, column, value):
 st.set_page_config(page_title="Pipettide seire PRO", layout="wide")
 init_db()
 
-# --- FUNKTSIOON SALVESTAMISEKS (Kasutatakse nupu callbackina) ---
+# --- CALLBACK SALVESTAMISEKS ---
 def submit_callback():
-    # Võtame andmed sessioonist
-    nimi = st.session_state.get('final_name', '')
-    if nimi:
+    # Kui on uus klient, võtame nime tekstikastist, muidu selectboxist
+    if st.session_state.uus_klient_check:
+        nimi = st.session_state.get('input_uus_nimi', '')
+    else:
+        nimi = st.session_state.get('valik_olemasolev', '')
+
+    if nimi and nimi != "":
         add_entry(
             nimi, 
             st.session_state.f_kogus, 
@@ -88,7 +100,7 @@ def submit_callback():
             st.session_state.f_email, 
             st.session_state.f_tel
         )
-        # NULLIME VÄLJAD TURVALISELT
+        # Puhastame väljad
         st.session_state.uus_klient_check = False
         if "input_uus_nimi" in st.session_state:
             st.session_state.input_uus_nimi = ""
@@ -104,41 +116,37 @@ with st.sidebar:
     st.header("Lisa uus töö")
     
     if not data.empty:
+        # Tõmbame viimased andmed automaatseks täitmiseks
         kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
         olemasolevad_nimed = sorted(data['klient'].unique().tolist())
     else:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    # Märkeruut
     on_uus = st.checkbox("➕ Lisa täiesti uus klient", key="uus_klient_check")
     
-    current_name = ""
     d_kontakt, d_email, d_tel = "", "", ""
 
     if on_uus:
-        current_name = st.text_input("Uue kliendi nimi", key="input_uus_nimi")
+        st.text_input("Uue kliendi nimi", key="input_uus_nimi")
     else:
         valik = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed, key="valik_olemasolev")
-        if valik:
-            current_name = valik
+        # AUTOMAATNE TÄITMINE: Kui klient on valitud, võtame tema andmed
+        if valik and valik in kliendid_info.index:
             d_kontakt = str(kliendid_info.loc[valik, 'kontaktisik'] or "")
             d_email = str(kliendid_info.loc[valik, 'email'] or "")
             d_tel = str(kliendid_info.loc[valik, 'telefon'] or "")
 
-    # Salvestame nime sessiooni, et callback kätte saaks
-    st.session_state.final_name = current_name
-
-    # VORM - kasutame väljade puhastamiseks 'key' parameetreid
+    # VORM
     with st.form("lisa_vorm", clear_on_submit=True):
         st.number_input("Kogus", min_value=1, step=1, key="f_kogus")
         st.date_input("Saabumise kuupäev", datetime.now(), key="f_saabumine")
         st.subheader("Kontaktandmed")
+        # Kasutame 'value' parameetrit automaatseks täitmiseks
         st.text_input("Kontaktisik", value=d_kontakt, key="f_kontakt")
         st.text_input("Email", value=d_email, key="f_email")
         st.text_input("Telefon", value=d_tel, key="f_tel")
         
-        # Nupp kutsub välja callback funktsiooni
         st.form_submit_button("Salvesta andmebaasi", on_click=submit_callback)
 
 # 4. TABELID
@@ -147,7 +155,7 @@ tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu"])
 def draw_rows(df_subset):
     for index, row in df_subset.iterrows():
         with st.container():
-            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.6, 0.5, 1, 1, 1, 1, 1, 0.4])
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.6, 0.5, 1, 1, 1, 1, 1, 0.6])
             with c1:
                 st.write(f"**{row['klient']}**")
                 st.caption(f"👤 {row['kontaktisik'] or '-'} | 📧 {row['email'] or '-'} | 📞 {row['telefon'] or '-'}")
@@ -167,14 +175,32 @@ def draw_rows(df_subset):
                     else:
                         st.caption(f"✅ {row[field]}")
 
+            # MUUDA JA KUSTUTA NUPUD
             with c8:
-                if st.button("🗑️", key=f"del_{row['id']}"):
+                edit_col, del_col = st.columns(2)
+                if edit_col.button("📝", key=f"ed_{row['id']}"):
+                    st.session_state[f"edit_mode_{row['id']}"] = True
+                
+                if del_col.button("🗑️", key=f"del_{row['id']}"):
                     conn = sqlite3.connect(DB_FILE)
                     c = conn.cursor()
                     c.execute("DELETE FROM pipetid WHERE id = ?", (row['id'],))
                     conn.commit()
                     conn.close()
                     st.rerun()
+
+            # MUUTMISE VORM (avaneb pliiatsile vajutades)
+            if st.session_state.get(f"edit_mode_{row['id']}", False):
+                with st.form(f"edit_form_{row['id']}"):
+                    e_klient = st.text_input("Klient", value=row['klient'])
+                    e_kogus = st.number_input("Kogus", value=row['kogus'])
+                    e_kontakt = st.text_input("Kontaktisik", value=row['kontaktisik'])
+                    e_email = st.text_input("Email", value=row['email'])
+                    e_tel = st.text_input("Telefon", value=row['telefon'])
+                    if st.form_submit_button("Uuenda"):
+                        update_full_entry(row['id'], e_klient, e_kogus, e_kontakt, e_email, e_tel)
+                        st.session_state[f"edit_mode_{row['id']}"] = False
+                        st.rerun()
             st.divider()
 
 with tab1:
@@ -191,6 +217,6 @@ with tab2:
 if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
-    st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_export.csv", "text/csv")
+    st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
 
 

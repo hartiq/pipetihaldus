@@ -27,6 +27,7 @@ if not check_password():
     st.stop()  # Peatame rakenduse laadimise siinkohal
 # --- TURVALISUSE LÕPP ---
 
+
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -74,11 +75,20 @@ def update_field(row_id, column, value):
 st.set_page_config(page_title="Pipettide seire PRO", layout="wide")
 init_db()
 
-# --- TÜHJENDAMISE FUNKTSIOON (CALLBACK) ---
-def salvesta_ja_puhasta(nimi, kogus, saabumine, kontakt, email, tel):
+# --- FUNKTSIOON SALVESTAMISEKS (Kasutatakse nupu callbackina) ---
+def submit_callback():
+    # Võtame andmed sessioonist
+    nimi = st.session_state.get('final_name', '')
     if nimi:
-        add_entry(nimi, kogus, saabumine, kontakt, email, tel)
-        # Turvaline tühjendamine mälus
+        add_entry(
+            nimi, 
+            st.session_state.f_kogus, 
+            st.session_state.f_saabumine.strftime("%d.%m.%Y"), 
+            st.session_state.f_kontakt, 
+            st.session_state.f_email, 
+            st.session_state.f_tel
+        )
+        # NULLIME VÄLJAD TURVALISELT
         st.session_state.uus_klient_check = False
         if "input_uus_nimi" in st.session_state:
             st.session_state.input_uus_nimi = ""
@@ -93,10 +103,6 @@ data = load_data()
 with st.sidebar:
     st.header("Lisa uus töö")
     
-    # Initsialiseerime staatuse
-    if "uus_klient_check" not in st.session_state:
-        st.session_state.uus_klient_check = False
-
     if not data.empty:
         kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
         olemasolevad_nimed = sorted(data['klient'].unique().tolist())
@@ -107,30 +113,33 @@ with st.sidebar:
     # Märkeruut
     on_uus = st.checkbox("➕ Lisa täiesti uus klient", key="uus_klient_check")
     
-    sisestatud_nimi = ""
-    default_kontakt, default_email, default_tel = "", "", ""
+    current_name = ""
+    d_kontakt, d_email, d_tel = "", "", ""
 
     if on_uus:
-        sisestatud_nimi = st.text_input("Uue kliendi nimi", key="input_uus_nimi")
+        current_name = st.text_input("Uue kliendi nimi", key="input_uus_nimi")
     else:
-        valitud_klient = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed, key="valik_olemasolev")
-        if valitud_klient:
-            sisestatud_nimi = valitud_klient
-            default_kontakt = str(kliendid_info.loc[valitud_klient, 'kontaktisik'] or "")
-            default_email = str(kliendid_info.loc[valitud_klient, 'email'] or "")
-            default_tel = str(kliendid_info.loc[valitud_klient, 'telefon'] or "")
+        valik = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed, key="valik_olemasolev")
+        if valik:
+            current_name = valik
+            d_kontakt = str(kliendid_info.loc[valik, 'kontaktisik'] or "")
+            d_email = str(kliendid_info.loc[valik, 'email'] or "")
+            d_tel = str(kliendid_info.loc[valik, 'telefon'] or "")
 
+    # Salvestame nime sessiooni, et callback kätte saaks
+    st.session_state.final_name = current_name
+
+    # VORM - kasutame väljade puhastamiseks 'key' parameetreid
     with st.form("lisa_vorm", clear_on_submit=True):
-        f_kogus = st.number_input("Kogus", min_value=1, step=1)
-        f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
-        f_kontakt = st.text_input("Kontaktisik", value=default_kontakt)
-        f_email = st.text_input("Email", value=default_email)
-        f_tel = st.text_input("Telefon", value=default_tel)
+        st.number_input("Kogus", min_value=1, step=1, key="f_kogus")
+        st.date_input("Saabumise kuupäev", datetime.now(), key="f_saabumine")
+        st.subheader("Kontaktandmed")
+        st.text_input("Kontaktisik", value=d_kontakt, key="f_kontakt")
+        st.text_input("Email", value=d_email, key="f_email")
+        st.text_input("Telefon", value=d_tel, key="f_tel")
         
-        # Nupp käivitab funktsiooni
-        if st.form_submit_button("Salvesta andmebaasi"):
-            salvesta_ja_puhasta(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
-            st.rerun()
+        # Nupp kutsub välja callback funktsiooni
+        st.form_submit_button("Salvesta andmebaasi", on_click=submit_callback)
 
 # 4. TABELID
 tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu"])
@@ -182,4 +191,4 @@ with tab2:
 if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
-    st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
+    st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_export.csv", "text/csv")

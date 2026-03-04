@@ -3,22 +3,19 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 
-# 1. ANDMEBAASI SEADISTUS (SQLite)
-DB_FILE = "pipetid_andmed.db"
+# 1. ANDMEBAASI HALDUS
+DB_FILE = "pipetid_v2.db"
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    # Lisatud uued väljad: kontaktisik, email, telefon
     c.execute('''CREATE TABLE IF NOT EXISTS pipetid
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  klient TEXT, 
-                  kogus INTEGER, 
-                  saabumine TEXT, 
-                  saadetud_kalibr TEXT, 
-                  kaes_kalibr TEXT, 
-                  saabunud_kalibr TEXT, 
-                  teavitus TEXT, 
-                  valjastatud TEXT)''')
+                  klient TEXT, kogus INTEGER, saabumine TEXT, 
+                  saadetud_kalibr TEXT, kaes_kalibr TEXT, saabunud_kalibr TEXT, 
+                  teavitus TEXT, valjastatud TEXT,
+                  kontaktisik TEXT, email TEXT, telefon TEXT)''')
     conn.commit()
     conn.close()
 
@@ -28,11 +25,21 @@ def load_data():
     conn.close()
     return df
 
-def add_entry(klient, kogus, saabumine):
+def add_entry(klient, kogus, saabumine, kontakt, email, tel):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT INTO pipetid (klient, kogus, saabumine, saadetud_kalibr, kaes_kalibr, saabunud_kalibr, teavitus, valjastatud) VALUES (?, ?, ?, '', '', '', '', '')",
-              (klient, kogus, saabumine))
+    c.execute("""INSERT INTO pipetid 
+                 (klient, kogus, saabumine, saadetud_kalibr, kaes_kalibr, saabunud_kalibr, 
+                  teavitus, valjastatud, kontaktisik, email, telefon) 
+                 VALUES (?, ?, ?, '', '', '', '', '', ?, ?, ?)""",
+              (klient, kogus, saabumine, kontakt, email, tel))
+    conn.commit()
+    conn.close()
+
+def delete_entry(row_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM pipetid WHERE id = ?", (row_id,))
     conn.commit()
     conn.close()
 
@@ -44,85 +51,102 @@ def update_field(row_id, column, value):
     conn.close()
 
 # 2. RAKENDUSE LIIDES
-st.set_page_config(page_title="Pipettide seire", layout="wide")
+st.set_page_config(page_title="Pipettide seire PRO", layout="wide")
 init_db()
 
-st.title("🧪 Pipettide kalibreerimise sisesüsteem")
-st.info("Andmed salvestatakse rakenduse siseandmebaasi.")
+st.title("🧪 Pipettide kalibreerimise süsteem")
 
-# Külgmenüü uue töö lisamiseks
-with st.sidebar:
-    st.header("Lisa uus töö")
-    with st.form("lisa_vorm", clear_on_submit=True):
-        klient = st.text_input("Kliendi nimi")
-        kogus = st.number_input("Kogus", min_value=1, step=1)
-        saabumine = st.date_input("Saabumise kuupäev", datetime.now())
-        submit = st.form_submit_button("Salvesta")
-        
-        if submit and klient:
-            add_entry(klient, kogus, saabumine.strftime("%d.%m.%Y"))
-            st.success(f"Lisatud: {klient}")
-            st.rerun()
-
-# 3. ANDMETE KUVAMINE
 data = load_data()
 
-def is_empty(val):
-    return val == "" or val is None
+# 3. NUTIKAS LISAMISVORM (Sidebar)
+with st.sidebar:
+    st.header("Lisa uus töö")
+    
+    # Leiame unikaalsed kliendid ja nende andmed automaatseks täitmiseks
+    if not data.empty:
+        kliendid_info = data.drop_duplicates('klient').set_index('klient')
+        olemasolevad_nimed = sorted(data['klient'].unique().tolist())
+    else:
+        kliendid_info = pd.DataFrame()
+        olemasolevad_nimed = []
+
+    # Valik või uus nimi
+    valitud_klient = st.selectbox("Vali klient või trüki uus", [""] + olemasolevad_nimed + ["+ Lisa uus..."])
+    
+    if valitud_klient == "+ Lisa uus...":
+        sisestatud_nimi = st.text_input("Uue kliendi nimi")
+    else:
+        sisestatud_nimi = valitud_klient
+
+    # Automaatne andmete täitmine, kui klient on varem olnud
+    default_kontakt = ""
+    default_email = ""
+    default_tel = ""
+    
+    if sisestatud_nimi in kliendid_info.index:
+        default_kontakt = kliendid_info.loc[sisestatud_nimi, 'kontaktisik']
+        default_email = kliendid_info.loc[sisestatud_nimi, 'email']
+        default_tel = kliendid_info.loc[sisestatud_nimi, 'telefon']
+
+    with st.form("lisa_vorm", clear_on_submit=True):
+        f_kogus = st.number_input("Kogus", min_value=1, step=1)
+        f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
+        
+        st.subheader("Kontaktandmed (vabatahtlik)")
+        f_kontakt = st.text_input("Kontaktisik", value=default_kontakt)
+        f_email = st.text_input("Email", value=default_email)
+        f_tel = st.text_input("Telefon", value=default_tel)
+        
+        submit = st.form_submit_button("Salvesta andmebaasi")
+        
+        if submit and sisestatud_nimi:
+            add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
+            st.success(f"Lisatud: {sisestatud_nimi}")
+            st.rerun()
+
+# 4. TABELI KUVAMINE
+st.subheader("Aktiivsed tööd")
 
 if not data.empty:
     for index, row in data.iterrows():
         with st.container():
-            c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 0.6, 1.2, 1.2, 1.2, 1.2, 1.2])
+            # Tulbad: Klient/Kontakt, Kogus, 5 x Staatus, Kustuta
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.5, 0.5, 1, 1, 1, 1, 1, 0.5])
             
-            c1.write(f"**{row['klient']}**")
+            with c1:
+                st.write(f"**{row['klient']}**")
+                if row['kontaktisik']: st.caption(f"👤 {row['kontaktisik']}")
+                if row['email']: st.caption(f"📧 {row['email']}")
+
             c2.write(f"{row['kogus']} tk")
             
-            # Nuppude funktsionaalsus
             now_str = datetime.now().strftime("%d.%m.%Y")
             
-            with c3:
-                if is_empty(row['saadetud_kalibr']):
-                    if st.button("Saadetud", key=f"btn1_{row['id']}"):
-                        update_field(row['id'], "saadetud_kalibr", now_str)
-                        st.rerun()
-                else: st.caption(f"📤 {row['saadetud_kalibr']}")
+            # Status buttons
+            cols = [('saadetud_kalibr', c3, "Saadaetud"), ('kaes_kalibr', c4, "Tallinnas"), 
+                    ('saabunud_kalibr', c5, "Kalibreeritud"), ('teavitus', c6, "Teavitatud"), 
+                    ('valjastatud', c7, "Väljastatud/Saadetud")]
 
-            with c4:
-                if is_empty(row['kaes_kalibr']):
-                    if st.button("Saabus Tallinnasse", key=f"btn2_{row['id']}"):
-                        update_field(row['id'], "kaes_kalibr", now_str)
-                        st.rerun()
-                else: st.caption(f"🔧 {row['kaes_kalibr']}")
+            for field, col, label in cols:
+                with col:
+                    if not row[field]:
+                        if st.button(label, key=f"{field}_{row['id']}"):
+                            update_field(row['id'], field, now_str)
+                            st.rerun()
+                    else:
+                        st.caption(f"✅ {row[field]}")
 
-            with c5:
-                if is_empty(row['saabunud_kalibr']):
-                    if st.button("Tagasi Tartus", key=f"btn3_{row['id']}"):
-                        update_field(row['id'], "saabunud_kalibr", now_str)
-                        st.rerun()
-                else: st.caption(f"🏠 {row['saabunud_kalibr']}")
-
-            with c6:
-                if is_empty(row['teavitus']):
-                    if st.button("Teavitatud", key=f"btn4_{row['id']}"):
-                        update_field(row['id'], "teavitus", now_str)
-                        st.rerun()
-                else: st.caption(f"📧 {row['teavitus']}")
-
-            with c7:
-                if is_empty(row['valjastatud']):
-                    if st.button("Väljastatud", key=f"btn5_{row['id']}"):
-                        update_field(row['id'], "valjastatud", now_str)
-                        st.rerun()
-                else: st.info(f"✅ {row['valjastatud']}")
+            # KUSTUTAMISE NUPP
+            with c8:
+                if st.button("🗑️", key=f"del_{row['id']}", help="Kustuta rida"):
+                    delete_entry(row['id'])
+                    st.rerun()
             
             st.divider()
 else:
-    st.write("Tabel on tühi. Lisa esimene klient vasakult menüüst.")
+    st.info("Andmebaas on tühi.")
 
-# 4. EKSPORDI VÕIMALUS (Varukoopiaks)
+# 5. EKSPORT
 if not data.empty:
-    st.sidebar.divider()
     csv = data.to_csv(index=False).encode('utf-8-sig')
-    st.sidebar.download_button("Laadi andmed Excelisse (CSV)", csv, "pipetid_export.csv", "text/csv")
-
+    st.sidebar.download_button("Laadi andmed alla (CSV)", csv, "pipetid_andmebaas.csv", "text/csv")

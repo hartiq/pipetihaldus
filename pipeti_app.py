@@ -27,7 +27,6 @@ if not check_password():
     st.stop()  # Peatame rakenduse laadimise siinkohal
 # --- TURVALISUSE LÕPP ---
 
-
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -71,19 +70,30 @@ def update_field(row_id, column, value):
     conn.commit()
     conn.close()
 
-# 2. RAKENDUSE LIIDES
+# 2. RAKENDUSE SEADISTUS
 st.set_page_config(page_title="Pipettide seire PRO", layout="wide")
 init_db()
 
-st.title("🧪 Pipettide kalibreerimise süsteem")
+# --- TÜHJENDAMISE FUNKTSIOON (CALLBACK) ---
+def salvesta_ja_puhasta(nimi, kogus, saabumine, kontakt, email, tel):
+    if nimi:
+        add_entry(nimi, kogus, saabumine, kontakt, email, tel)
+        # Turvaline tühjendamine mälus
+        st.session_state.uus_klient_check = False
+        if "input_uus_nimi" in st.session_state:
+            st.session_state.input_uus_nimi = ""
+        st.toast(f"Salvestatud: {nimi}")
+    else:
+        st.error("Kliendi nimi on puudu!")
 
+st.title("🧪 Pipettide kalibreerimise süsteem")
 data = load_data()
 
 # 3. KÜLGMENÜÜ: LISAMINE
 with st.sidebar:
     st.header("Lisa uus töö")
     
-    # Initsialiseerime märkeruudu oleku sessioonis, kui seda veel pole
+    # Initsialiseerime staatuse
     if "uus_klient_check" not in st.session_state:
         st.session_state.uus_klient_check = False
 
@@ -94,19 +104,17 @@ with st.sidebar:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    # Märkeruut kasutab nüüd sessiooni olekut
-    on_uus_klient = st.checkbox("➕ Lisa täiesti uus klient", key="uus_klient_check")
+    # Märkeruut
+    on_uus = st.checkbox("➕ Lisa täiesti uus klient", key="uus_klient_check")
     
     sisestatud_nimi = ""
     default_kontakt, default_email, default_tel = "", "", ""
 
-    if on_uus_klient:
-        # Tekstiväli uue nime jaoks
+    if on_uus:
         sisestatud_nimi = st.text_input("Uue kliendi nimi", key="input_uus_nimi")
     else:
-        # Olemasoleva kliendi valik
         valitud_klient = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed, key="valik_olemasolev")
-        if valitud_klient != "":
+        if valitud_klient:
             sisestatud_nimi = valitud_klient
             default_kontakt = str(kliendid_info.loc[valitud_klient, 'kontaktisik'] or "")
             default_email = str(kliendid_info.loc[valitud_klient, 'email'] or "")
@@ -115,25 +123,14 @@ with st.sidebar:
     with st.form("lisa_vorm", clear_on_submit=True):
         f_kogus = st.number_input("Kogus", min_value=1, step=1)
         f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
-        
-        st.subheader("Kontaktandmed")
         f_kontakt = st.text_input("Kontaktisik", value=default_kontakt)
         f_email = st.text_input("Email", value=default_email)
         f_tel = st.text_input("Telefon", value=default_tel)
         
+        # Nupp käivitab funktsiooni
         if st.form_submit_button("Salvesta andmebaasi"):
-            if sisestatud_nimi:
-                add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
-                
-                # SIIN ON TRIKK: lülitame märkeruudu False peale ja puhastame mälust uue nime
-                st.session_state.uus_klient_check = False
-                if "input_uus_nimi" in st.session_state:
-                    st.session_state.input_uus_nimi = ""
-                
-                st.success(f"Salvestatud: {sisestatud_nimi}")
-                st.rerun()
-            else:
-                st.error("Kliendi nimi on puudu!")
+            salvesta_ja_puhasta(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
+            st.rerun()
 
 # 4. TABELID
 tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu"])

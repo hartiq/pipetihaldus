@@ -35,6 +35,14 @@ def add_entry(klient, kogus, saabumine, kontakt, email, tel):
     conn.commit()
     conn.close()
 
+def update_full_entry(row_id, klient, kogus, kontakt, email, tel):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""UPDATE pipetid SET klient=?, kogus=?, kontaktisik=?, email=?, telefon=? 
+                 WHERE id=?""", (klient, kogus, kontakt, email, tel, row_id))
+    conn.commit()
+    conn.close()
+
 def update_field(row_id, column, value):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -47,11 +55,7 @@ st.set_page_config(page_title="Pipettide seire PRO", layout="wide")
 init_db()
 data = load_data()
 
-# ABIKONTROLL MOBIILILE: Suur märguanne, kui sidebar on peidus
-if st.button("➕ AVA SISESTAMISE AKEN (VASAKUL)", use_container_width=True):
-    st.info("Kasuta vasakpoolset menüüd andmete sisestamiseks. Mobiilis ava see vasakult ülevalt noolega.")
-
-# 3. KÜLGMENÜÜ: LISAMINE
+# 3. KÜLGMENÜÜ (SIDEBAR)
 with st.sidebar:
     st.header("Lisa uus töö")
     
@@ -62,16 +66,15 @@ with st.sidebar:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    # LAHENDUS: Eraldi märkeruut uue kliendi jaoks, mis ei kao kunagi ära
-    lisa_uus_klient = st.checkbox("✨ LISA TÄIESTI UUS KLIENT", value=False)
+    # SEE MÄRKERUUT ON ALATI NÄHTAVAL
+    on_uus = st.checkbox("➕ Lisa täiesti uus klient", value=False)
     
     d_nimi = ""
     d_kontakt, d_email, d_tel = "", "", ""
 
-    if lisa_uus_klient:
-        d_nimi = st.text_input("Uue kliendi nimi", key="uus_nimi_manual")
+    if on_uus:
+        d_nimi = st.text_input("Uue kliendi nimi")
     else:
-        # Siin on nüüd ainult olemasolevad, et otsing oleks puhas
         valitud_klient = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed)
         if valitud_klient != "":
             d_nimi = valitud_klient
@@ -83,20 +86,20 @@ with st.sidebar:
     with st.form("lisa_vorm", clear_on_submit=True):
         f_kogus = st.number_input("Kogus", min_value=1, step=1)
         f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
-        st.write("---")
+        st.subheader("Kontaktandmed")
         f_kontakt = st.text_input("Kontaktisik", value=d_kontakt)
         f_email = st.text_input("Email", value=d_email)
         f_tel = st.text_input("Telefon", value=d_tel)
         
-        if st.form_submit_button("Salvesta andmebaasi"):
+        if st.form_submit_button("Salvesta"):
             if d_nimi and d_nimi != "":
                 add_entry(d_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
                 st.success(f"Salvestatud!")
                 st.rerun()
             else:
-                st.error("Kliendi nimi on puudu!")
+                st.error("Nimi puudu!")
 
-# 4. TABELID
+# 4. PÕHIVAADE JA TABELID
 st.title("🧪 Pipettide kalibreerimise süsteem")
 tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu"])
 
@@ -123,9 +126,41 @@ def draw_rows(df_subset):
                     else: st.caption(f"✅ {row[field]}")
 
             with c8:
-                if st.button("🗑️", key=f"del_{row['id']}"):
+                edit_col, del_col = st.columns(2)
+                if edit_col.button("📝", key=f"ed_{row['id']}"):
+                    st.session_state[f"edit_mode_{row['id']}"] = True
+                if del_col.button("🗑️", key=f"del_{row['id']}"):
                     conn = sqlite3.connect(DB_FILE)
                     c = conn.cursor()
                     c.execute("DELETE FROM pipetid WHERE id = ?", (row['id'],))
                     conn.commit()
                     conn.close()
+                    st.rerun()
+
+            if st.session_state.get(f"edit_mode_{row['id']}", False):
+                with st.form(f"edit_form_{row['id']}"):
+                    e_klient = st.text_input("Klient", value=row['klient'])
+                    e_kogus = st.number_input("Kogus", value=row['kogus'])
+                    e_kontakt = st.text_input("Kontaktisik", value=row['kontaktisik'])
+                    e_email = st.text_input("Email", value=row['email'])
+                    e_tel = st.text_input("Telefon", value=row['telefon'])
+                    if st.form_submit_button("Uuenda"):
+                        update_full_entry(row['id'], e_klient, e_kogus, e_kontakt, e_email, e_tel)
+                        st.session_state[f"edit_mode_{row['id']}"] = False
+                        st.rerun()
+            st.divider()
+
+with tab1:
+    aktiivsed = data[data['valjastatud'] == ""]
+    if aktiivsed.empty: st.info("Aktiivseid töid pole.")
+    else: draw_rows(aktiivsed)
+
+with tab2:
+    ajalugu = data[data['valjastatud'] != ""]
+    if ajalugu.empty: st.info("Ajalugu on tühi.")
+    else: draw_rows(ajalugu)
+
+if not data.empty:
+    csv = data.to_csv(index=False).encode('utf-8-sig')
+    st.sidebar.divider()
+    st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")

@@ -1,65 +1,87 @@
-# Funktsioon andmete lugemiseks ja tulpade puhastamiseks
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
+from datetime import datetime
+
+# 1. RAKENDUSE SEADISTUS
+st.set_page_config(page_title="Pipettide seire", layout="wide")
+st.title("🧪 Pipettide kalibreerimise haldus")
+
+# Sinu Google Sheetsi link
+SHEET_URL = "https://docs.google.com/spreadsheets/d/17tcKGDEh83opzgkTunwTVHx1duszoEXkbf-5wn3c3Rg/edit?usp=sharing"
+
+# 2. ÜHENDUSE LOOMINE
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 def get_data():
-    df = conn.read(spreadsheet=url)
-    # Eemaldame tulpade nimedest üleliigsed tühikud algusest ja lõpust
+    # Loeme andmed ja puhastame tulpade nimed tühikutest
+    df = conn.read(spreadsheet=SHEET_URL)
     df.columns = df.columns.str.strip()
     return df
 
-data = get_data()
+try:
+    data = get_data()
+except Exception as e:
+    st.error(f"Viga andmete lugemisel: {e}")
+    st.stop()
 
-# --- Tabeli kuvamine ja muutmine ---
-st.subheader("Tööde staatus")
+# Määrame täpsed tulpade nimed vastavalt sinu tabelile
+COL_ID = "ID"
+COL_KLIENT = "Klient"
+COL_KOGUS = "Kogus"
+COL_SAABUMINE = "Saabumise kp"
+COL_SAADETUD = "Kalibreerijale saadetud"
+COL_KAES = "Kalibreerijal käes"
+COL_SABUNUD = "Kalibreerijalt saabunud"
+COL_TEAVITUS = "Kliendi teavitus"
+COL_VALJASTATUD = "Kliendile saadetud / Ära antud"
 
-# Määrame täpsed tulpade nimed, mida koodist otsime
-# NB! Veendu, et Google Sheetsis on need TÄPSELT nii
-col_saadetud = "Kalibreerijale saadetud"
-col_kaes = "Kalibreerijal käes"
-col_sabunud = "Kalibreerijalt saabunud"
-col_teavitus = "Kliendi teavitus"
-col_valjastatud = "Kliendile saadetud / Ära antud"
+# 3. UUE KLIENDI LISAMINE
+with st.sidebar:
+    st.header("Lisa uus töö")
+    with st.form("lisa_vorm", clear_on_submit=True):
+        uus_klient = st.text_input("Kliendi nimi")
+        uus_kogus = st.number_input("Kogus", min_value=1, step=1)
+        uus_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
+        lisa_nupp = st.form_submit_button("Salvesta tabelisse")
 
-for index, row in data.iterrows():
-    with st.container():
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 0.8, 1.2, 1.2, 1.2, 1.2, 1.2])
-        
-        c1.write(f"**{row['Klient']}**")
-        c2.write(f"{row['Kogus']} tk")
-        
-        def update_cell(col_name, idx):
-            data.at[idx, col_name] = datetime.now().strftime("%d.%m.%Y")
-            conn.update(spreadsheet=url, data=data)
+        if lisa_nupp and uus_klient:
+            # Arvutame uue ID (viimane ID + 1)
+            uue_id = int(data[COL_ID].max()) + 1 if not data.empty and COL_ID in data else 1
+            
+            uus_rida = pd.DataFrame([{
+                COL_ID: uue_id,
+                COL_KLIENT: uus_klient,
+                COL_KOGUS: uus_kogus,
+                COL_SAABUMINE: uus_saabumine.strftime("%d.%m.%Y"),
+                COL_SAADETUD: "",
+                COL_KAES: "",
+                COL_SABUNUD: "",
+                COL_TEAVITUS: "",
+                COL_VALJASTATUD: ""
+            }])
+            
+            updated_df = pd.concat([data, uus_rida], ignore_index=True)
+            conn.update(spreadsheet=SHEET_URL, data=updated_df)
+            st.success(f"Lisatud: {uus_klient}")
             st.rerun()
 
-        # Kasutame .get() meetodit või kontrollime sisu turvaliselt
-        with c3:
-            val = str(row[col_saadetud]) if col_saadetud in row else ""
-            if val == "" or val == "nan" or val == "-":
-                if st.button("Saada", key=f"s1_{index}"): update_cell(col_saadetud, index)
-            else: st.caption(f"Saadetud: {val}")
+# 4. TABELI KUVAMINE JA MUUTMINE
+st.subheader("Aktiivsed tööd")
 
-        with c4:
-            val = str(row[col_kaes]) if col_kaes in row else ""
-            if val == "" or val == "nan" or val == "-":
-                if st.button("Käes", key=f"s2_{index}"): update_cell(col_kaes, index)
-            else: st.caption(f"Käes: {val}")
+# Abifunktsioon tühja lahtri kontrolliks (hoiab ära vea, kui lahter on tühi või NaN)
+def is_empty(val):
+    return pd.isna(val) or str(val).strip() == "" or str(val).strip() == "-" or str(val).strip() == "nan"
 
-        with c5:
-            val = str(row[col_sabunud]) if col_sabunud in row else ""
-            if val == "" or val == "nan" or val == "-":
-                if st.button("Sabus", key=f"s3_{index}"): update_cell(col_sabunud, index)
-            else: st.caption(f"Sabus: {val}")
-
-        with c6:
-            val = str(row[col_teavitus']) if col_teavitus in row else ""
-            if val == "" or val == "nan" or val == "-":
-                if st.button("Teavita", key=f"s4_{index}"): update_cell(col_teavitus, index)
-            else: st.caption(f"Teavitatud: {val}")
-
-        with c7:
-            # See on see koht, mis vea andis
-            val = str(row[col_valjastatud]) if col_valjastatud in row else ""
-            if val == "" or val == "nan" or val == "-":
-                if st.button("Väljasta", key=f"s5_{index}"): update_cell(col_valjastatud, index)
-            else: st.caption(f"Väljastatud: {val}")
+if not data.empty:
+    for index, row in data.iterrows():
+        # Kui töö on juba täielikult väljastatud, võime selle soovi korral peita või kuvada hallina
+        # Hetkel kuvame kõik
         
-        st.divider()
+        with st.container():
+            c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 0.7, 1.3, 1.3, 1.3, 1.3, 1.5])
+            
+            c1.write(f"**{row[COL_KLIENT]}**")
+            c2.write(f"{row[COL_KOGUS]} tk")
+            
+            # Funk

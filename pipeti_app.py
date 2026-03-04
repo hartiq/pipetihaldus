@@ -101,9 +101,6 @@ with st.sidebar:
 tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu (Lõpetatud)"])
 
 def draw_table(df_subset, is_history=False):
-    otsing = st.text_input("🔍 Otsi klienti...", key="search_"+str(is_history))
-    if otsing:
-        df_subset = df_subset[df_subset['klient'].str.contains(otsing, case=False, na=False)]
 
     for index, row in df_subset.iterrows():
         with st.container():
@@ -168,4 +165,5 @@ if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
     st.sidebar.download_button("Laadi kogu andmebaas (CSV)", csv, "pipetid_andmed.csv", "text/csv")
+
 

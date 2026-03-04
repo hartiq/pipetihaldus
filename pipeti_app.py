@@ -27,6 +27,7 @@ if not check_password():
     st.stop()  # Peatame rakenduse laadimise siinkohal
 # --- TURVALISUSE LÕPP ---
 
+
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -82,6 +83,10 @@ data = load_data()
 with st.sidebar:
     st.header("Lisa uus töö")
     
+    # Initsialiseerime märkeruudu oleku sessioonis, kui seda veel pole
+    if "uus_klient_check" not in st.session_state:
+        st.session_state.uus_klient_check = False
+
     if not data.empty:
         kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
         olemasolevad_nimed = sorted(data['klient'].unique().tolist())
@@ -89,15 +94,17 @@ with st.sidebar:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    # --- UUS LAHENDUS: Märkeruut uue kliendi jaoks ---
+    # Märkeruut kasutab nüüd sessiooni olekut
     on_uus_klient = st.checkbox("➕ Lisa täiesti uus klient", key="uus_klient_check")
     
     sisestatud_nimi = ""
     default_kontakt, default_email, default_tel = "", "", ""
 
     if on_uus_klient:
+        # Tekstiväli uue nime jaoks
         sisestatud_nimi = st.text_input("Uue kliendi nimi", key="input_uus_nimi")
     else:
+        # Olemasoleva kliendi valik
         valitud_klient = st.selectbox("Vali olemasolev klient", [""] + olemasolevad_nimed, key="valik_olemasolev")
         if valitud_klient != "":
             sisestatud_nimi = valitud_klient
@@ -117,6 +124,12 @@ with st.sidebar:
         if st.form_submit_button("Salvesta andmebaasi"):
             if sisestatud_nimi:
                 add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
+                
+                # SIIN ON TRIKK: lülitame märkeruudu False peale ja puhastame mälust uue nime
+                st.session_state.uus_klient_check = False
+                if "input_uus_nimi" in st.session_state:
+                    st.session_state.input_uus_nimi = ""
+                
                 st.success(f"Salvestatud: {sisestatud_nimi}")
                 st.rerun()
             else:

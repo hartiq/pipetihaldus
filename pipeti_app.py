@@ -9,7 +9,6 @@ DB_FILE = "pipetid_v2.db"
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # Lisatud uued väljad: kontaktisik, email, telefon
     c.execute('''CREATE TABLE IF NOT EXISTS pipetid
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   klient TEXT, kogus INTEGER, saabumine TEXT, 
@@ -36,6 +35,14 @@ def add_entry(klient, kogus, saabumine, kontakt, email, tel):
     conn.commit()
     conn.close()
 
+def update_full_entry(row_id, klient, kogus, kontakt, email, tel):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""UPDATE pipetid SET klient=?, kogus=?, kontaktisik=?, email=?, telefon=? 
+                 WHERE id=?""", (klient, kogus, kontakt, email, tel, row_id))
+    conn.commit()
+    conn.close()
+
 def delete_entry(row_id):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -58,76 +65,63 @@ st.title("🧪 Pipettide kalibreerimise süsteem")
 
 data = load_data()
 
-# 3. NUTIKAS LISAMISVORM (Sidebar)
+# 3. KÜLGMENÜÜ: LISAMINE
 with st.sidebar:
     st.header("Lisa uus töö")
     
-    # Leiame unikaalsed kliendid ja nende andmed automaatseks täitmiseks
     if not data.empty:
-        kliendid_info = data.drop_duplicates('klient').set_index('klient')
+        kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
         olemasolevad_nimed = sorted(data['klient'].unique().tolist())
     else:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    # Valik või uus nimi
     valitud_klient = st.selectbox("Vali klient või trüki uus", [""] + olemasolevad_nimed + ["+ Lisa uus..."])
-    
-    if valitud_klient == "+ Lisa uus...":
-        sisestatud_nimi = st.text_input("Uue kliendi nimi")
-    else:
-        sisestatud_nimi = valitud_klient
+    sisestatud_nimi = st.text_input("Kliendi nimi") if valitud_klient == "+ Lisa uus..." else valitud_klient
 
-    # Automaatne andmete täitmine, kui klient on varem olnud
-    default_kontakt = ""
-    default_email = ""
-    default_tel = ""
-    
+    default_kontakt, default_email, default_tel = "", "", ""
     if sisestatud_nimi in kliendid_info.index:
-        default_kontakt = kliendid_info.loc[sisestatud_nimi, 'kontaktisik']
-        default_email = kliendid_info.loc[sisestatud_nimi, 'email']
-        default_tel = kliendid_info.loc[sisestatud_nimi, 'telefon']
+        default_kontakt = str(kliendid_info.loc[sisestatud_nimi, 'kontaktisik'] or "")
+        default_email = str(kliendid_info.loc[sisestatud_nimi, 'email'] or "")
+        default_tel = str(kliendid_info.loc[sisestatud_nimi, 'telefon'] or "")
 
     with st.form("lisa_vorm", clear_on_submit=True):
         f_kogus = st.number_input("Kogus", min_value=1, step=1)
         f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
-        
-        st.subheader("Kontaktandmed (vabatahtlik)")
         f_kontakt = st.text_input("Kontaktisik", value=default_kontakt)
         f_email = st.text_input("Email", value=default_email)
         f_tel = st.text_input("Telefon", value=default_tel)
         
-        submit = st.form_submit_button("Salvesta andmebaasi")
-        
-        if submit and sisestatud_nimi:
-            add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
-            st.success(f"Lisatud: {sisestatud_nimi}")
-            st.rerun()
+        if st.form_submit_button("Salvesta"):
+            if sisestatud_nimi:
+                add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
+                st.rerun()
 
-# 4. TABELI KUVAMINE
-st.subheader("Aktiivsed tööd")
+# 4. VAHELEHED: AKTIIVSED VS AJALUGU
+tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu (Lõpetatud)"])
 
-if not data.empty:
-    for index, row in data.iterrows():
+def draw_table(df_subset, is_history=False):
+    otsing = st.text_input("🔍 Otsi klienti...", key="search_"+str(is_history))
+    if otsing:
+        df_subset = df_subset[df_subset['klient'].str.contains(otsing, case=False, na=False)]
+
+    for index, row in df_subset.iterrows():
         with st.container():
-            # Tulbad: Klient/Kontakt, Kogus, 5 x Staatus, Kustuta
-            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.5, 0.5, 1, 1, 1, 1, 1, 0.5])
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.6, 0.5, 1, 1, 1, 1, 1, 0.6])
             
             with c1:
                 st.write(f"**{row['klient']}**")
-                if row['kontaktisik']: st.caption(f"👤 {row['kontaktisik']}")
-                if row['email']: st.caption(f"📧 {row['email']}")
+                st.caption(f"👤 {row['kontaktisik'] or '-'} | 📧 {row['email'] or '-'} | 📞 {row['telefon'] or '-'}")
 
             c2.write(f"{row['kogus']} tk")
-            
             now_str = datetime.now().strftime("%d.%m.%Y")
             
-            # Status buttons
-            cols = [('saadetud_kalibr', c3, "Saadaetud"), ('kaes_kalibr', c4, "Tallinnas"), 
+            # Status nupud
+            btns = [('saadetud_kalibr', c3, "Saadetud"), ('kaes_kalibr', c4, "Tallinnas"), 
                     ('saabunud_kalibr', c5, "Kalibreeritud"), ('teavitus', c6, "Teavitatud"), 
-                    ('valjastatud', c7, "Väljastatud/Saadetud")]
+                    ('valjastatud', c7, "Väljasta")]
 
-            for field, col, label in cols:
+            for field, col, label in btns:
                 with col:
                     if not row[field]:
                         if st.button(label, key=f"{field}_{row['id']}"):
@@ -136,17 +130,41 @@ if not data.empty:
                     else:
                         st.caption(f"✅ {row[field]}")
 
-            # KUSTUTAMISE NUPP
             with c8:
-                if st.button("🗑️", key=f"del_{row['id']}", help="Kustuta rida"):
+                # Muuda ja Kustuta
+                edit_col, del_col = st.columns(2)
+                if edit_col.button("📝", key=f"ed_{row['id']}"):
+                    st.session_state[f"edit_mode_{row['id']}"] = True
+                if del_col.button("🗑️", key=f"del_{row['id']}"):
                     delete_entry(row['id'])
                     st.rerun()
-            
+
+            # Muutmise vorm (avaneb rea alla)
+            if st.session_state.get(f"edit_mode_{row['id']}", False):
+                with st.form(f"edit_form_{row['id']}"):
+                    e_klient = st.text_input("Klient", value=row['klient'])
+                    e_kogus = st.number_input("Kogus", value=row['kogus'])
+                    e_kontakt = st.text_input("Kontaktisik", value=row['kontaktisik'])
+                    e_email = st.text_input("Email", value=row['email'])
+                    e_tel = st.text_input("Telefon", value=row['telefon'])
+                    if st.form_submit_button("Uuenda"):
+                        update_full_entry(row['id'], e_klient, e_kogus, e_kontakt, e_email, e_tel)
+                        st.session_state[f"edit_mode_{row['id']}"] = False
+                        st.rerun()
             st.divider()
-else:
-    st.info("Andmebaas on tühi.")
+
+with tab1:
+    aktiivsed = data[data['valjastatud'] == ""]
+    if aktiivsed.empty: st.write("Aktiivseid töid pole.")
+    else: draw_table(aktiivsed)
+
+with tab2:
+    ajalugu = data[data['valjastatud'] != ""]
+    if ajalugu.empty: st.write("Ajalugu on tühi.")
+    else: draw_table(ajalugu, is_history=True)
 
 # 5. EKSPORT
 if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
-    st.sidebar.download_button("Laadi andmed alla (CSV)", csv, "pipetid_andmebaas.csv", "text/csv")
+    st.sidebar.divider()
+    st.sidebar.download_button("Laadi kogu andmebaas (CSV)", csv, "pipetid_andmed.csv", "text/csv")

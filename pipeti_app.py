@@ -76,27 +76,25 @@ with st.sidebar:
         kliendid_info = pd.DataFrame()
         olemasolevad_nimed = []
 
-    # Kontrollime, kas peame väljad tühjendama
-    if 'clear_input' not in st.session_state:
-        st.session_state.clear_input = False
-
     valikud = ["+ Lisa uus..."] + olemasolevad_nimed
     
-    # Selectboxi ja tekstiindeksi hallatavus
+    # Kasutame key-d, et Streamlit hoiaks olekut
     valitud_klient = st.selectbox("Vali klient või otsi", valikud, key="client_select")
     
     sisestatud_nimi = ""
     default_kontakt, default_email, default_tel = "", "", ""
 
     if valitud_klient == "+ Lisa uus...":
-        # Kasutame key-d, et saaksime seda hiljem tühjendada
-        sisestatud_nimi = st.text_input("Uue kliendi nimi", key="new_client_name")
+        # NB! Me ei muuda seda väljaspool, vaid laseme vormil endal puhastuda
+        sisestatud_nimi = st.text_input("Uue kliendi nimi", key="new_client_name_input")
     else:
         sisestatud_nimi = valitud_klient
-        default_kontakt = str(kliendid_info.loc[valitud_klient, 'kontaktisik'] or "")
-        default_email = str(kliendid_info.loc[valitud_klient, 'email'] or "")
-        default_tel = str(kliendid_info.loc[valitud_klient, 'telefon'] or "")
+        if valitud_klient in kliendid_info.index:
+            default_kontakt = str(kliendid_info.loc[valitud_klient, 'kontaktisik'] or "")
+            default_email = str(kliendid_info.loc[valitud_klient, 'email'] or "")
+            default_tel = str(kliendid_info.loc[valitud_klient, 'telefon'] or "")
 
+    # Vormi seadistus
     with st.form("lisa_vorm", clear_on_submit=True):
         f_kogus = st.number_input("Kogus", min_value=1, step=1)
         f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
@@ -106,15 +104,15 @@ with st.sidebar:
         f_email = st.text_input("Email", value=default_email)
         f_tel = st.text_input("Telefon", value=default_tel)
         
-        if st.form_submit_button("Salvesta"):
+        # Salvestamise nupp
+        submitted = st.form_submit_button("Salvesta")
+        
+        if submitted:
             if sisestatud_nimi and sisestatud_nimi != "":
                 add_entry(sisestatud_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
-                
-                # TÜHJENDAMISE LOOGIKA:
-                if "new_client_name" in st.session_state:
-                    st.session_state.new_client_name = "" # Tühjendab tekstivälja
-                
                 st.success(f"Salvestatud: {sisestatud_nimi}")
+                # Selle asemel et session_state'i torkida, teeme lihtsalt rerun'i
+                # clear_on_submit=True puhastab vormisisesed väljad automaatselt
                 st.rerun()
             else:
                 st.error("Kliendi nimi on puudu!")

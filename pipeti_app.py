@@ -119,7 +119,7 @@ def draw_table(df_subset, is_history=False):
             # Status nupud
             btns = [('saadetud_kalibr', c3, "Saadetud"), ('kaes_kalibr', c4, "Tallinnas"), 
                     ('saabunud_kalibr', c5, "Kalibreeritud"), ('teavitus', c6, "Teavitatud"), 
-                    ('valjastatud', c7, "Väljasta")]
+                    ('valjastatud', c7, "Väljastatud/saadetud")]
 
             for field, col, label in btns:
                 with col:
@@ -168,3 +168,4 @@ if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
     st.sidebar.divider()
     st.sidebar.download_button("Laadi kogu andmebaas (CSV)", csv, "pipetid_andmed.csv", "text/csv")
+

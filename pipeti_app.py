@@ -55,10 +55,10 @@ st.set_page_config(page_title="Pipettide seire PRO", layout="wide")
 init_db()
 data = load_data()
 
-# 3. KÜLGMENÜÜ: LISAMINE
-with st.sidebar:
-    st.header("Lisa uus töö")
-    
+st.title("🧪 Pipettide kalibreerimise süsteem")
+
+# 3. LISAMISE AKEN LEHE KESKEL (Mobiilisõbralik)
+with st.expander("➕ LISATÖÖ SISESTAMINE", expanded=False):
     if not data.empty:
         kliendid_info = data.sort_values('id').drop_duplicates('klient', keep='last').set_index('klient')
         olemasolevad_nimed = sorted(data['klient'].unique().tolist())
@@ -69,7 +69,6 @@ with st.sidebar:
     # Valikukast
     valitud_klient = st.selectbox("Vali klient või trüki uus", ["+ Lisa uus..."] + olemasolevad_nimed)
     
-    # Automaatne täitmine (See, mis enne töötas)
     d_nimi = ""
     d_kontakt, d_email, d_tel = "", "", ""
 
@@ -82,22 +81,25 @@ with st.sidebar:
             d_email = str(kliendid_info.loc[valitud_klient, 'email'] or "")
             d_tel = str(kliendid_info.loc[valitud_klient, 'telefon'] or "")
 
-    # VORM
     with st.form("lisa_vorm", clear_on_submit=True):
-        f_kogus = st.number_input("Kogus", min_value=1, step=1)
-        f_saabumine = st.date_input("Saabumise kuupäev", datetime.now())
-        st.subheader("Kontaktandmed")
+        col_k, col_s = st.columns(2)
+        f_kogus = col_k.number_input("Kogus", min_value=1, step=1)
+        f_saabumine = col_s.date_input("Saabumise kp", datetime.now())
+        
+        st.write("---")
         f_kontakt = st.text_input("Kontaktisik", value=d_kontakt)
         f_email = st.text_input("Email", value=d_email)
         f_tel = st.text_input("Telefon", value=d_tel)
         
-        if st.form_submit_button("Salvesta"):
+        if st.form_submit_button("Salvesta andmebaasi"):
             if d_nimi and d_nimi != "":
                 add_entry(d_nimi, f_kogus, f_saabumine.strftime("%d.%m.%Y"), f_kontakt, f_email, f_tel)
                 st.success(f"Salvestatud!")
-                st.rerun() # See puhastab kõik
+                st.rerun()
             else:
                 st.error("Kliendi nimi on puudu!")
+
+st.write("---")
 
 # 4. TABELID
 tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu"])
@@ -105,6 +107,7 @@ tab1, tab2 = st.tabs(["🚀 Aktiivsed tööd", "📜 Ajalugu"])
 def draw_rows(df_subset):
     for index, row in df_subset.iterrows():
         with st.container():
+            # Tulbad (mobiilis virnastatakse need üksteise alla)
             c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.6, 0.5, 1, 1, 1, 1, 1, 0.6])
             with c1:
                 st.write(f"**{row['klient']}**")
@@ -113,7 +116,7 @@ def draw_rows(df_subset):
             
             now_str = datetime.now().strftime("%d.%m.%Y")
             btns = [('saadetud_kalibr', c3, "Saadetud"), ('kaes_kalibr', c4, "Tallinnas"), 
-                    ('saabunud_kalibr', c5, "Kalibreeritud"), ('teavitus', c6, "Teavitatud"), 
+                    ('saabunud_kalibr', c5, "Kalibr."), ('teavitus', c6, "Teavitatud"), 
                     ('valjastatud', c7, "Väljastatud")]
 
             for field, col, label in btns:
@@ -159,7 +162,7 @@ with tab2:
     if ajalugu.empty: st.info("Ajalugu on tühi.")
     else: draw_rows(ajalugu)
 
+# EKSPORT (sidebari jätsin ainult ekspordi, et see ei häiriks)
 if not data.empty:
     csv = data.to_csv(index=False).encode('utf-8-sig')
-    st.sidebar.divider()
     st.sidebar.download_button("Laadi CSV alla", csv, "pipetid_andmed.csv", "text/csv")
